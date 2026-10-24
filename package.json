@@ -1,0 +1,39 @@
+{
+  "name": "checksum",
+  "version": "0.1.0",
+  "description": "Bank statement ingestion, dedupe, categorization and reconciliation service",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "gen:statement": "tsx scripts/generate-statement.ts",
+    "worker": "tsx src/worker.ts",
+    "start:worker": "node dist/worker.js",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "bullmq": "^6.4.0",
+    "csv-parse": "^7.0.3",
+    "express": "^4.22.3",
+    "ioredis": "^6.0.0",
+    "multer": "^2.4.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
+    "@types/express": "^4.17.25",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

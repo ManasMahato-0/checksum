@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ledger
+          POSTGRES_PASSWORD: ledger
+          POSTGRES_DB: checksum
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ledger -d checksum"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      # Runs the suite against PGlite AND the real servers (BullMQ tests are skipped without REDIS_URL).
+      TEST_DATABASE_URL: postgres://ledger:ledger@localhost:5432/checksum
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply schema
+        run: psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build # typecheck + vite build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t checksum:ci .
+      - name: Smoke test
+        run: |
+          docker run -d --name api -p 3000:3000 checksum:ci
+          for i in $(seq 1 20); do
+            if curl -fs localhost:3000/health; then
+              curl -fs -H 'accept: text/html' localhost:3000/ | grep -q '<div id="root">' && exit 0
+            fi
+            sleep 1
+          done
+          docker logs api
+          exit 1

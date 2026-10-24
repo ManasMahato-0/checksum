@@ -1,0 +1,6 @@
+node_modules
+dist
+.env
+# never commit real statements
+*.real.csv
+statements/private/

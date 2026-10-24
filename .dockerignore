@@ -1,0 +1,12 @@
+node_modules
+dist
+web/node_modules
+web/dist
+.git
+.github
+.env
+tests
+scripts
+*.md
+*.real.csv
+statements/

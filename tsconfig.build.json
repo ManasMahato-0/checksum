@@ -1,0 +1,9 @@
+{
+  // Production build: only src, so output lands at dist/server.js and dist/worker.js.
+  // tsconfig.json still covers tests and scripts for typechecking.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src"
+  },
+  "include": ["src"]
+}
