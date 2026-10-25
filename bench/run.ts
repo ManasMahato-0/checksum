@@ -18,6 +18,7 @@ import { SESSION_COOKIE } from '../src/auth/http';
 import { hashToken, newSessionToken } from '../src/auth/passwords';
 import { PostgresAuthStore } from '../src/auth/postgresStore';
 import { pgDb } from '../src/db/db';
+import { migrate } from '../src/db/migrate';
 import { sha256 } from '../src/dedupe/fingerprint';
 import { processImport } from '../src/import/importService';
 import { PostgresRepository } from '../src/import/postgresRepository';
@@ -532,6 +533,7 @@ async function main() {
     ['gaps', gapDetection],
     ['tests', testSuite],
   ];
+  await migrate(db);
   const env = await environment();
   for (const [name, fn] of all) if (!only.length || only.includes(name)) await fn();
   await reset();

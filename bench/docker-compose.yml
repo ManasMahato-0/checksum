@@ -10,8 +10,6 @@ services:
       POSTGRES_PASSWORD: ledger
       POSTGRES_DB: checksum
     ports: ["55432:5432"]
-    volumes:
-      - ../db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ledger -d checksum"]
       interval: 2s

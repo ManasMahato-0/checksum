@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { pgDb } from './db/db';
+import { migrate } from './db/migrate';
 import { importHandlers, requeueStaleImports } from './import/importService';
 import { PostgresRepository } from './import/postgresRepository';
 import { BullMqQueue } from './queue/bullmqQueue';
@@ -7,10 +8,9 @@ import { BullMqQueue } from './queue/bullmqQueue';
 const { DATABASE_URL, REDIS_URL } = process.env;
 if (!DATABASE_URL || !REDIS_URL) throw new Error('worker needs DATABASE_URL and REDIS_URL');
 
-const repo = new PostgresRepository(pgDb(new Pool({ connectionString: DATABASE_URL })));
+const db = pgDb(new Pool({ connectionString: DATABASE_URL }));
+const repo = new PostgresRepository(db);
 const queue = new BullMqQueue({ redisUrl: REDIS_URL, concurrency: Number(process.env.WORKER_CONCURRENCY ?? 4) });
-queue.start(importHandlers(repo));
-console.log('worker started');
 
 // Recover imports whose enqueue was lost (API crashed after saving, Redis was down, ...).
 const STALE_MS = 5 * 60_000;
@@ -18,8 +18,20 @@ const sweep = () =>
   requeueStaleImports(repo, queue, STALE_MS)
     .then((n) => n && console.log(`sweeper re-enqueued ${n} stale import(s)`))
     .catch((e) => console.error('sweeper failed', e));
-void sweep();
-const timer = setInterval(sweep, 60_000);
+let timer: NodeJS.Timeout | undefined;
+
+// The schema must be current before the first job touches it (no-op when the API already migrated).
+migrate(db)
+  .then(() => {
+    queue.start(importHandlers(repo));
+    console.log('worker started');
+    void sweep();
+    timer = setInterval(sweep, 60_000);
+  })
+  .catch((e) => {
+    console.error('startup failed', e);
+    process.exit(1);
+  });
 
 const shutdown = async () => {
   clearInterval(timer);

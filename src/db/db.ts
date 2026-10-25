@@ -3,6 +3,8 @@ import { Pool, types } from 'pg';
 /** Minimal surface the repository needs, so prod (pg) and tests (PGlite) share one implementation. */
 export interface Queryable {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
+  /** Run a multi-statement script (no parameters), e.g. a migration file. */
+  exec(sql: string): Promise<void>;
 }
 
 export interface Db extends Queryable {
@@ -15,11 +17,16 @@ export function pgDb(pool: Pool): Db {
 
   return {
     query: (sql, params) => pool.query(sql, params as unknown[]) as never,
+    // Without parameters pg uses the simple query protocol, which accepts several statements.
+    exec: async (sql) => void (await pool.query(sql)),
     async transaction(fn) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const out = await fn({ query: (sql, params) => client.query(sql, params as unknown[]) as never });
+        const out = await fn({
+          query: (sql, params) => client.query(sql, params as unknown[]) as never,
+          exec: async (sql) => void (await client.query(sql)),
+        });
         await client.query('COMMIT');
         return out;
       } catch (e) {

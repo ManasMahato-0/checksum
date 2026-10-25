@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import request from 'supertest';
 import { pgDb, type Db } from '../../src/db/db';
+import { migrate } from '../../src/db/migrate';
 import { createApp } from '../../src/app';
 import { PostgresAuthStore } from '../../src/auth/postgresStore';
 import { InMemoryAuthStore, type AuthStore } from '../../src/auth/store';
@@ -56,11 +57,14 @@ export async function freshPostgresRepo(): Promise<Repository> {
   return postgresPair(shared);
 }
 
-// Optional: the same suite against a real server. TEST_DATABASE_URL must point at a database
-// that already has db/schema.sql applied (its tables are truncated between tests!).
+// Optional: the same suite against a real server. TEST_DATABASE_URL is migrated on first use and
+// its tables are truncated between tests: never point it at data you care about.
 let realDb: Db | undefined;
 async function freshRealPostgresRepo(): Promise<Repository> {
-  realDb ??= pgDb(new Pool({ connectionString: process.env.TEST_DATABASE_URL }));
+  if (!realDb) {
+    realDb = pgDb(new Pool({ connectionString: process.env.TEST_DATABASE_URL }));
+    await migrate(realDb);
+  }
   await realDb.query(TRUNCATE);
   return postgresPair(realDb);
 }

@@ -15,7 +15,8 @@
     "web:dev": "npm --prefix web run dev",
     "web:build": "npm --prefix web run build",
     "bench": "tsx bench/run.ts",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "migrate": "tsx src/db/migrateCli.ts"
   },
   "license": "MIT",
   "dependencies": {

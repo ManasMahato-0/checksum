@@ -30,6 +30,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=web /app/web/dist ./web/dist
+COPY db/migrations ./db/migrations
 COPY package.json ./
 USER node
 EXPOSE 3000

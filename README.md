@@ -63,7 +63,10 @@ npm run worker                # one or more workers
 TEST_DATABASE_URL=$DATABASE_URL REDIS_URL=$REDIS_URL npm test   # WARNING: truncates tables
 ```
 
-If you pulled an earlier version, recreate the DB (`docker compose down -v`): the schema changed.
+**Schema changes are migrations** in `db/migrations/` (`NNN_name.sql`, applied in order, once). The API
+and workers migrate on startup under a Postgres advisory lock, so several can boot together; `npm run
+migrate` does it by hand. Each applied file's checksum is recorded and an edited migration is refused:
+add a new one instead. (Databases created before migrations existed need one `docker compose down -v`.)
 
 ## API
 
