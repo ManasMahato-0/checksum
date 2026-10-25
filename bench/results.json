@@ -1,0 +1,159 @@
+{
+  "env": {
+    "date": "2026-10-25",
+    "commit": "1aa62af",
+    "cpu": "13th Gen Intel(R) Core(TM) i5-13420H (12 threads)",
+    "memoryGb": 16,
+    "os": "Windows_NT 10.0.26200",
+    "node": "v22.13.1",
+    "postgres": "16.15 (Debian 16.15-1.pgdg13+2)",
+    "redis": "7.4.11",
+    "quick": false
+  },
+  "results": {
+    "throughput": [
+      {
+        "rows": 1000,
+        "runs": [
+          156,
+          202,
+          101
+        ],
+        "medianMs": 156,
+        "rowsPerSec": 6415
+      },
+      {
+        "rows": 10000,
+        "runs": [
+          968,
+          979,
+          1045
+        ],
+        "medianMs": 979,
+        "rowsPerSec": 10218
+      },
+      {
+        "rows": 40000,
+        "runs": [
+          3378,
+          3962,
+          3905
+        ],
+        "medianMs": 3905,
+        "rowsPerSec": 10244
+      }
+    ],
+    "uploadLatency": {
+      "rows": 10000,
+      "async": {
+        "p50": 55.2,
+        "p95": 118.8,
+        "samples": 20
+      },
+      "sync": {
+        "p50": 945.2,
+        "p95": 1048.7,
+        "samples": 20
+      },
+      "speedupP50": 17.1
+    },
+    "bulkInsert": {
+      "rows": 10000,
+      "variants": {
+        "batched (500 rows/INSERT)": {
+          "runs": [
+            899,
+            809,
+            924
+          ],
+          "medianMs": 899
+        },
+        "row-by-row (1 row/INSERT)": {
+          "runs": [
+            13024,
+            12787,
+            13324
+          ],
+          "medianMs": 13024
+        }
+      },
+      "speedup": 14.5,
+      "reductionPct": 93
+    },
+    "workerScaling": {
+      "files": 24,
+      "rowsPerFile": 5000,
+      "results": [
+        {
+          "workers": 1,
+          "ms": 12382,
+          "rowsPerSec": 9691,
+          "speedup": 1
+        },
+        {
+          "workers": 2,
+          "ms": 6789,
+          "rowsPerSec": 17675,
+          "speedup": 1.82
+        },
+        {
+          "workers": 4,
+          "ms": 4747,
+          "rowsPerSec": 25278,
+          "speedup": 2.61
+        },
+        {
+          "workers": 8,
+          "ms": 4335,
+          "rowsPerSec": 27685,
+          "speedup": 2.86
+        }
+      ],
+      "cpus": 12
+    },
+    "dedupe": {
+      "windows": 20,
+      "rowsSubmitted": 10358,
+      "uniqueRowsExpected": 3000,
+      "rowsStored": 3000,
+      "duplicateRowsStored": 0,
+      "replayFiles": 10,
+      "replayRowsInserted": 0,
+      "sameFileParallelUploads": 10,
+      "importsCreatedForSameFile": 1,
+      "sameFileStatuses": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        202
+      ]
+    },
+    "gapDetection": {
+      "statements": 100,
+      "cleanStatements": 20,
+      "rowsPerStatement": 500,
+      "droppedRows": 303,
+      "gaps": 303,
+      "detected": 303,
+      "exactAmount": 303,
+      "falsePositives": 0
+    },
+    "tests": {
+      "passed": 134,
+      "skipped": 0,
+      "failed": 0,
+      "coverage": {
+        "lines": 90.36,
+        "statements": 87.86,
+        "functions": 93.93,
+        "branches": 75.38
+      }
+    }
+  }
+}

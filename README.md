@@ -7,6 +7,11 @@ transactions and a balance reconciliation that tells you if rows are missing.
 newest-first. XLS/PDF exports are not supported yet. Adding a bank means one file implementing
 `StatementParser` (see `src/parsers/`) plus any new narration patterns in `src/normalize/narration.ts`.
 
+**Measured** ([docs/BENCHMARKS.md](docs/BENCHMARKS.md), `npm run bench`, real Postgres + Redis on a laptop):
+~10,000 rows/s per worker · upload answers in 55 ms p50 vs 945 ms if processed in-request (17×) ·
+batched writes 14.5× faster than row-by-row · 0 duplicates across 20 concurrent overlapping uploads ·
+303/303 injected missing transactions caught with exact amounts · 134 tests, 90% line coverage.
+
 ## Architecture
 
 ```
