@@ -115,10 +115,6 @@ export class PostgresRepository implements Repository {
 
   async createPendingImport(input: { accountId: string; fileHash: string; filename: string; content: Buffer }) {
     return this.db.transaction(async (tx) => {
-      await tx.query(
-        `INSERT INTO accounts (id, name, bank) VALUES ($1, $2, 'UNKNOWN') ON CONFLICT (id) DO NOTHING`,
-        [input.accountId, `Account ${input.accountId}`],
-      );
       // UNIQUE (account_id, file_hash): the loser of a race gets no row back.
       const created = await tx.query<{ id: string | number }>(
         `INSERT INTO imports (account_id, file_hash, filename, status, file_content)
@@ -287,17 +283,11 @@ export class PostgresRepository implements Repository {
   }
 
   async setOverride(accountId: string, merchantKey: string, category: string) {
-    await this.db.transaction(async (tx) => {
-      await tx.query(
-        `INSERT INTO accounts (id, name, bank) VALUES ($1, $2, 'UNKNOWN') ON CONFLICT (id) DO NOTHING`,
-        [accountId, `Account ${accountId}`],
-      );
-      await tx.query(
-        `INSERT INTO merchant_overrides (account_id, merchant_key, category) VALUES ($1, $2, $3)
-         ON CONFLICT (account_id, merchant_key) DO UPDATE SET category = EXCLUDED.category`,
-        [accountId, merchantKey, category],
-      );
-    });
+    await this.db.query(
+      `INSERT INTO merchant_overrides (account_id, merchant_key, category) VALUES ($1, $2, $3)
+       ON CONFLICT (account_id, merchant_key) DO UPDATE SET category = EXCLUDED.category`,
+      [accountId, merchantKey, category],
+    );
   }
 
   async listTransactions(accountId: string): Promise<StoredTxn[]> {

@@ -9,6 +9,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    proxy: { '/accounts': api, '/categories': api, '/health': api },
+    proxy: { '/auth': api, '/accounts': api, '/categories': api, '/health': api },
   },
 });

@@ -4,6 +4,7 @@ import { api, isUnfinished } from './api';
 import { useAccount } from './account';
 
 export const keys = {
+  me: ['me'] as const,
   imports: (a: string) => ['imports', a] as const,
   importDetail: (a: string, id: string) => ['imports', a, id] as const,
   txns: (a: string) => ['txns', a] as const,
@@ -49,4 +50,8 @@ export function useSummary() {
 
 export function useCategories() {
   return useQuery({ queryKey: keys.categories, queryFn: api.categories, staleTime: Infinity });
+}
+
+export function useMe() {
+  return useQuery({ queryKey: keys.me, queryFn: api.me, staleTime: 5 * 60_000 });
 }

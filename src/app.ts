@@ -1,6 +1,8 @@
 import path from 'node:path';
 import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
 import multer from 'multer';
+import { authRoutes, currentUser, loadSession, sameOrigin, type AuthOptions } from './auth/http';
+import type { AuthStore } from './auth/store';
 import { categorize, DEFAULT_RULES } from './categorize/categorizer';
 import { submitImport } from './import/importService';
 import type { Repository } from './import/repository';
@@ -27,21 +29,41 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   return res.status(500).json({ error: 'internal error' });
 };
 
-export interface AppOptions {
-  /** Built frontend (web/dist). When set, it is served with an SPA fallback for page routes. */
-  staticDir?: string;
+export interface AppDeps {
+  repo: Repository;
+  queue: JobQueue;
+  auth: AuthStore;
 }
 
-export function createApp(repo: Repository, queue: JobQueue, opts: AppOptions = {}) {
+export interface AppOptions extends AuthOptions {
+  /** Built frontend (web/dist). When set, it is served with an SPA fallback for page routes. */
+  staticDir?: string;
+  /** Express "trust proxy" setting, so req.ip (rate limits) is the client's when behind a proxy. */
+  trustProxy?: boolean | number | string;
+}
+
+export function createApp({ repo, queue, auth }: AppDeps, opts: AppOptions = {}) {
   const app = express();
+  if (opts.trustProxy !== undefined) app.set('trust proxy', opts.trustProxy);
   app.use(express.json());
+  app.use(sameOrigin);
+  app.use(loadSession(auth));
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_BYTES } });
 
-  // Every route with :accountId gets the same check before any handler (or multer) runs.
+  // Every route with :accountId: signed in, a numeric id, and an account this user owns, all
+  // checked before any handler (or multer) runs. Someone else's account is a 404, not a 403,
+  // so ids can't be probed for existence.
   app.param('accountId', (req, res, next, id: string) => {
+    const user = currentUser(res);
+    if (!user) return res.status(401).json({ error: 'sign in required' });
     if (!/^\d{1,15}$/.test(id)) return res.status(400).json({ error: 'accountId must be a positive integer' });
-    next();
+    auth
+      .ownsAccount(user.id, id)
+      .then((owns) => (owns ? next() : res.status(404).json({ error: 'account not found' })))
+      .catch(next);
   });
+
+  app.use(authRoutes(auth, opts));
 
   app.get('/health', (_req, res) => res.json({ ok: true }));
 

@@ -32,6 +32,8 @@ const paths = {
   arrowDown: <path d="M8 3v10m0 0l-4-4m4 4l4-4" />,
   chevronLeft: <path d="M10 3.5L5.5 8l4.5 4.5" />,
   chevronRight: <path d="M6 3.5L10.5 8 6 12.5" />,
+  chevronDown: <path d="M3.5 6l4.5 4.5L12.5 6" />,
+  logout: <path d="M6.5 13.5H4A1.5 1.5 0 012.5 12V4A1.5 1.5 0 014 2.5h2.5M10.5 11l3-3-3-3M13.5 8H6" />,
   info: (
     <>
       <circle cx="8" cy="8" r="5.5" />

@@ -1,11 +1,30 @@
 -- Money is ALWAYS stored as integer paise (BIGINT). Never floats.
 
+-- Emails are stored lower-cased by the app, so a plain UNIQUE is case-insensitive in practice.
+CREATE TABLE users (
+  id             BIGSERIAL PRIMARY KEY,
+  email          TEXT NOT NULL UNIQUE,
+  password_hash  TEXT NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Only the SHA-256 of the session token is stored; the token itself lives in the user's cookie.
+CREATE TABLE sessions (
+  token_hash  TEXT PRIMARY KEY,
+  user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at  TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_sessions_user ON sessions (user_id);
+
+-- Every account belongs to exactly one user; the API checks ownership on every account route.
 CREATE TABLE accounts (
   id            BIGSERIAL PRIMARY KEY,
+  user_id       BIGINT NOT NULL REFERENCES users(id),
   name          TEXT NOT NULL,
-  bank          TEXT NOT NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX idx_accounts_user ON accounts (user_id);
 
 -- One row per uploaded file. UNIQUE(account_id, file_hash) makes re-uploads idempotent.
 -- Lifecycle: queued -> processing -> done | failed. The upload bytes are staged in

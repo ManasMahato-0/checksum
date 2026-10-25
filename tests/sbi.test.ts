@@ -132,7 +132,7 @@ describe('SBI narrations', () => {
 
 describe('SBI end to end', () => {
   it('imports, categorizes and reconciles an SBI statement', async () => {
-    const h = makeHarness(new InMemoryRepository());
+    const h = await makeHarness(new InMemoryRepository());
     const { post, status } = await h.uploadAndWait(Buffer.from(sbi(SALARY, SWIGGY, CHAI)), 'sbi.csv');
     expect(post.status).toBe(202);
     expect(status).toMatchObject({ status: 'done', bank: 'SBI', rowsInserted: 3 });
@@ -142,14 +142,14 @@ describe('SBI end to end', () => {
   });
 
   it('flags a missing SBI transaction', async () => {
-    const h = makeHarness(new InMemoryRepository());
+    const h = await makeHarness(new InMemoryRepository());
     const { status } = await h.uploadAndWait(Buffer.from(sbi(SALARY, CHAI)), 'gap.csv'); // swiggy missing
     expect(status.reconciliation.ok).toBe(false);
     expect(status.reconciliation.breaks[0]).toMatchObject({ diffPaise: -50_000 });
   });
 
   it('an account can hold statements from different banks without interference', async () => {
-    const h = makeHarness(new InMemoryRepository());
+    const h = await makeHarness(new InMemoryRepository());
     const a = await h.uploadAndWait(csv(L.salary, L.swiggy), 'hdfc.csv');
     const b = await h.uploadAndWait(Buffer.from(sbi(SALARY, SWIGGY)), 'sbi.csv');
     expect(a.status.bank).toBe('HDFC');
@@ -165,19 +165,19 @@ describe('synthetic SBI generator', () => {
     execFileSync(process.execPath, ['--import', 'tsx', script, '--bank', 'sbi', '--seed', '5', ...a], { encoding: 'utf8' });
 
   it('clean statement reconciles; --drop creates gaps; --reverse still reconciles', async () => {
-    const h = makeHarness(new InMemoryRepository());
+    const h = await makeHarness(new InMemoryRepository());
     expect((await h.uploadAndWait(Buffer.from(gen()), 'clean.csv')).status.reconciliation.ok).toBe(true);
     const gappy = await h.uploadAndWait(Buffer.from(gen('--drop', '2')), 'gappy.csv');
     expect(gappy.status.reconciliation.breaks.length).toBeGreaterThan(0);
 
-    const h2 = makeHarness(new InMemoryRepository());
+    const h2 = await makeHarness(new InMemoryRepository());
     const rev = await h2.uploadAndWait(Buffer.from(gen('--reverse')), 'rev.csv');
     expect(rev.status).toMatchObject({ status: 'done', bank: 'SBI' });
     expect(rev.status.reconciliation.ok).toBe(true);
   });
 
   it('most merchants resolve to a real category (parser + categorizer work together)', async () => {
-    const h = makeHarness(new InMemoryRepository());
+    const h = await makeHarness(new InMemoryRepository());
     await h.uploadAndWait(Buffer.from(gen('--days', '60')), 'big.csv');
     const txns = await h.repo.listTransactions('1');
     const uncategorized = txns.filter((t) => t.category.category === 'Uncategorized');

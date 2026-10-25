@@ -31,6 +31,11 @@ Design decisions worth knowing:
 - **Crash recovery**: the upload is durable in Postgres before it is enqueued; a sweeper in the
   worker re-enqueues anything stuck `queued`/`processing` for over 5 minutes.
 - **Raw rows are never mutated**; derived data lives in `transactions`.
+- **Accounts belong to users.** Sign-in is email + password (scrypt, salted, parameters stored per
+  hash). The session is an opaque random token in an `HttpOnly`, `SameSite=Lax` cookie; only its
+  SHA-256 is stored, and logout deletes it server-side. Every `/accounts/:id/...` route checks
+  ownership before any handler or upload parsing runs, and someone else's account is a 404, so ids
+  can't be probed. Logins are rate-limited per IP and cross-origin writes are rejected.
 
 ## Run it
 
@@ -57,8 +62,21 @@ If you pulled an earlier version, recreate the DB (`docker compose down -v`): th
 
 ## API
 
+Everything under `/accounts` needs a session cookie (from register or login); `/health` and
+`/categories` are public.
+
+```bash
+curl -c jar -H 'content-type: application/json' -d '{"email":"me@example.com","password":"long enough"}' localhost:3000/auth/register
+curl -b jar -F file=@statement.csv localhost:3000/accounts/1/imports
+```
+
 | Method | Path | Notes |
 |---|---|---|
+| POST | `/auth/register` | `{ email, password }` (8+ chars); creates a first account "Personal"; 409 if taken |
+| POST | `/auth/login` | `{ email, password }`; 401 on bad credentials, 429 when rate-limited |
+| POST | `/auth/logout` | ends the session |
+| GET | `/auth/me` | `{ user, accounts }` |
+| GET / POST | `/accounts` | list your accounts / create one `{ name }` |
 | POST | `/accounts/:id/imports` | multipart `file`; 202 queued, 200 duplicate file, 422 unknown format |
 | GET | `/accounts/:id/imports?limit=` | history, newest first, with reconciliation status per import |
 | GET | `/accounts/:id/imports/:importId` | status, attempts, error, row counts, reconciliation |
@@ -66,6 +84,9 @@ If you pulled an earlier version, recreate the DB (`docker compose down -v`): th
 | GET | `/accounts/:id/summary` | spend per month per category, in paise |
 | PUT | `/accounts/:id/merchants/:merchant/category` | `{ "category": "..." }`; re-labels history |
 | GET | `/categories` | categories the rules can assign |
+
+Behind HTTPS, set `COOKIE_SECURE=true`; behind a reverse proxy also set `TRUST_PROXY=1` so rate
+limits see the real client IP.
 
 ## Frontend
 

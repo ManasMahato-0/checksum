@@ -1,20 +1,20 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
+import type { Account } from './api';
 import { load, save } from './storage';
 
-// No auth yet: the account is just an id the user picks. Accounts are created on first upload.
-type AccountCtx = { account: string; setAccount: (id: string) => void };
+// The account being viewed, always one the signed-in user owns.
+type AccountCtx = { account: string; accounts: Account[]; current: Account; setAccount: (id: string) => void };
 const Ctx = createContext<AccountCtx | null>(null);
 
-export function AccountProvider({ children }: { children: ReactNode }) {
-  const [account, setState] = useState(() => {
-    const saved = load('account');
-    return saved && /^\d{1,15}$/.test(saved) ? saved : '1';
-  });
+export function AccountProvider({ accounts, children }: { accounts: Account[]; children: ReactNode }) {
+  const [chosen, setChosen] = useState(() => load('account'));
+  // Fall back to the first account if the remembered one is gone (or belonged to another user).
+  const current = accounts.find((a) => a.id === chosen) ?? accounts[0]!;
   const setAccount = (id: string) => {
-    setState(id);
+    setChosen(id);
     save('account', id);
   };
-  return <Ctx.Provider value={{ account, setAccount }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ account: current.id, accounts, current, setAccount }}>{children}</Ctx.Provider>;
 }
 
 export function useAccount() {

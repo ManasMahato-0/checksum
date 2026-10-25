@@ -2,6 +2,8 @@ import { Pool } from 'pg';
 import request from 'supertest';
 import { pgDb, type Db } from '../../src/db/db';
 import { createApp } from '../../src/app';
+import { PostgresAuthStore } from '../../src/auth/postgresStore';
+import { InMemoryAuthStore, type AuthStore } from '../../src/auth/store';
 import { importHandlers } from '../../src/import/importService';
 import { PostgresRepository } from '../../src/import/postgresRepository';
 import { InMemoryRepository, type Repository } from '../../src/import/repository';
@@ -35,14 +37,23 @@ export function flaky(repo: Repository, failures: number): Repository {
   });
 }
 
+const TRUNCATE =
+  'TRUNCATE users, sessions, accounts, imports, raw_rows, transactions, merchant_overrides, reconciliation_breaks RESTART IDENTITY CASCADE';
+
+/** Postgres-backed repos get a Postgres auth store on the same database (accounts are FK targets). */
+const authByRepo = new WeakMap<Repository, AuthStore>();
+function postgresPair(db: Db): Repository {
+  const repo = new PostgresRepository(db);
+  authByRepo.set(repo, new PostgresAuthStore(db));
+  return repo;
+}
+
 // One PGlite engine shared by the whole test file; tables are truncated between tests.
 let shared: Db | undefined;
 export async function freshPostgresRepo(): Promise<Repository> {
   shared ??= await pgliteDb();
-  await shared.query(
-    'TRUNCATE accounts, imports, raw_rows, transactions, merchant_overrides, reconciliation_breaks RESTART IDENTITY CASCADE',
-  );
-  return new PostgresRepository(shared);
+  await shared.query(TRUNCATE);
+  return postgresPair(shared);
 }
 
 // Optional: the same suite against a real server. TEST_DATABASE_URL must point at a database
@@ -50,10 +61,8 @@ export async function freshPostgresRepo(): Promise<Repository> {
 let realDb: Db | undefined;
 async function freshRealPostgresRepo(): Promise<Repository> {
   realDb ??= pgDb(new Pool({ connectionString: process.env.TEST_DATABASE_URL }));
-  await realDb.query(
-    'TRUNCATE accounts, imports, raw_rows, transactions, merchant_overrides, reconciliation_breaks RESTART IDENTITY CASCADE',
-  );
-  return new PostgresRepository(realDb);
+  await realDb.query(TRUNCATE);
+  return postgresPair(realDb);
 }
 
 export const stores: [string, () => Promise<Repository>][] = [
@@ -64,10 +73,23 @@ export const stores: [string, () => Promise<Repository>][] = [
     : []),
 ];
 
+export const PASSWORD = 'correct horse battery';
+
+/** Registers a user (which creates their first account, id 1 in a fresh store) and returns a cookie-carrying client. */
+export async function signIn(app: ReturnType<typeof createApp>, email = 'me@example.com'): Promise<request.Agent> {
+  const agent = request.agent(app);
+  const res = await agent.post('/auth/register').send({ email, password: PASSWORD });
+  if (res.status !== 201) throw new Error(`register failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return agent;
+}
+
 export interface Harness {
   repo: Repository;
+  auth: AuthStore;
   queue: InProcessQueue;
   app: ReturnType<typeof createApp>;
+  /** Signed in as the owner of account 1. Use `request(h.app)` for anonymous calls. */
+  api: request.Agent;
   /** POST a file; returns the HTTP response only (job may still be running). */
   upload(file: Buffer, name?: string): request.Test;
   /** POST a file, wait for the queue to drain, then return the final import status. */
@@ -75,20 +97,24 @@ export interface Harness {
   status(importId: string): Promise<any>;
 }
 
-export function makeHarness(
+export async function makeHarness(
   repo: Repository,
-  opts: { startWorker?: boolean; retry?: Partial<RetryPolicy>; workerRepo?: Repository } = {},
-): Harness {
+  opts: { startWorker?: boolean; retry?: Partial<RetryPolicy>; workerRepo?: Repository; auth?: AuthStore } = {},
+): Promise<Harness> {
+  const auth = opts.auth ?? authByRepo.get(repo) ?? new InMemoryAuthStore();
   const queue = new InProcessQueue({ attempts: 3, baseDelayMs: 1, ...opts.retry });
   if (opts.startWorker !== false) queue.start(importHandlers(opts.workerRepo ?? repo));
-  const app = createApp(repo, queue);
+  const app = createApp({ repo, queue, auth });
+  const api = await signIn(app);
 
-  const upload = (file: Buffer, name = 'a.csv') => request(app).post('/accounts/1/imports').attach('file', file, name);
-  const status = async (importId: string) => (await request(app).get(`/accounts/1/imports/${importId}`)).body;
+  const upload = (file: Buffer, name = 'a.csv') => api.post('/accounts/1/imports').attach('file', file, name);
+  const status = async (importId: string) => (await api.get(`/accounts/1/imports/${importId}`)).body;
   return {
     repo,
+    auth,
     queue,
     app,
+    api,
     upload,
     status,
     async uploadAndWait(file, name) {

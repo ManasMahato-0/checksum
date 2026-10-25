@@ -845,3 +845,139 @@ tr.selected td {
     display: none;
   }
 }
+
+/* ---------- auth ---------- */
+.auth-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+}
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 28px;
+}
+.auth-brand {
+  margin-bottom: 24px;
+}
+.auth-sub {
+  margin: 6px 0 20px;
+}
+.auth-form {
+  gap: 14px;
+}
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.auth-field .input {
+  height: 38px;
+  width: 100%;
+}
+.auth-field small {
+  font-weight: 400;
+}
+.auth-submit {
+  height: 38px;
+  justify-content: center;
+}
+.auth-switch {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 13px;
+}
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-weight: 500;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+/* ---------- account menu ---------- */
+.account-btn {
+  padding: 0 8px 0 4px;
+  gap: 8px;
+}
+.account-avatar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.account-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.popover-right {
+  left: auto;
+  right: 0;
+}
+.menu {
+  width: 260px;
+  padding: 6px;
+}
+.menu-label {
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.menu-email {
+  padding: 0 8px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+.menu-item:hover {
+  background: var(--hover);
+}
+.menu-check {
+  display: inline-flex;
+  width: 16px;
+  color: var(--accent);
+}
+.menu-form {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px 4px;
+}
+.menu-form .input {
+  flex: 1;
+}
+@media (max-width: 640px) {
+  .account-name {
+    display: none;
+  }
+}

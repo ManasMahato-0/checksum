@@ -1,33 +1,38 @@
-import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router';
-import { useAccount } from '../lib/account';
-import { useImports } from '../lib/queries';
+import { AuthPage } from '../pages/AuthPage';
+import { AccountProvider } from '../lib/account';
+import { useImports, useMe } from '../lib/queries';
 import { useTheme } from '../lib/theme';
+import { AccountMenu } from './AccountMenu';
 import { Icon } from './Icon';
+import { ErrorState } from './QueryState';
 
-function AccountPicker() {
-  const { account, setAccount } = useAccount();
-  const [draft, setDraft] = useState(account);
-  useEffect(() => setDraft(account), [account]);
-  const commit = () => (/^\d{1,15}$/.test(draft) ? setAccount(draft) : setDraft(account));
-
+/** Session gate: sign-in screen, or the app scoped to the user's accounts. */
+export function Layout() {
+  const me = useMe();
+  if (me.isPending) {
+    return (
+      <div className="auth-wrap" aria-busy="true">
+        <Icon name="spinner" size={24} label="Loading" />
+      </div>
+    );
+  }
+  if (me.error) {
+    return (
+      <main>
+        <ErrorState error={me.error} retry={me.refetch} />
+      </main>
+    );
+  }
+  if (!me.data) return <AuthPage />;
   return (
-    <label className="field" title="No sign-in yet: each account is just an id. It is created on first upload.">
-      Account
-      <input
-        className="input account-input num"
-        inputMode="numeric"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value.replace(/\D/g, ''))}
-        onBlur={commit}
-        onKeyDown={(e) => e.key === 'Enter' && commit()}
-        aria-label="Account id"
-      />
-    </label>
+    <AccountProvider accounts={me.data.accounts}>
+      <Shell email={me.data.user.email} />
+    </AccountProvider>
   );
 }
 
-export function Layout() {
+function Shell({ email }: { email: string }) {
   const { theme, toggle } = useTheme();
   const { pending } = useImports(); // app-wide: keeps polling and refreshing data while jobs run
 
@@ -50,10 +55,9 @@ export function Layout() {
             {pending > 0 && (
               <Link to="/imports" className="badge badge-accent" style={{ textDecoration: 'none' }}>
                 <Icon name="spinner" size={13} />
-                Processing {pending}
+                <span className="hide-sm">Processing</span> {pending}
               </Link>
             )}
-            <AccountPicker />
             <button
               type="button"
               className="btn btn-ghost btn-icon"
@@ -63,6 +67,7 @@ export function Layout() {
             >
               <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
             </button>
+            <AccountMenu email={email} />
           </div>
         </div>
       </header>

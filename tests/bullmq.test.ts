@@ -2,9 +2,10 @@ import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { importHandlers } from '../src/import/importService';
+import { InMemoryAuthStore } from '../src/auth/store';
 import { InMemoryRepository, type Repository } from '../src/import/repository';
 import { BullMqQueue } from '../src/queue/bullmqQueue';
-import { csv, flaky, header, L } from './helpers/harness';
+import { csv, flaky, header, L, signIn } from './helpers/harness';
 
 /**
  * Integration tests against a REAL Redis. Skipped unless REDIS_URL is set:
@@ -16,7 +17,7 @@ describe.skipIf(!process.env.REDIS_URL)('BullMQ queue (real Redis)', () => {
     await Promise.all(open.splice(0).map((q) => q.close()));
   });
 
-  function setup(repo: Repository, workerRepo: Repository = repo) {
+  async function setup(repo: Repository, workerRepo: Repository = repo) {
     // unique queue per test so runs never see each other's jobs
     const queue = new BullMqQueue({
       redisUrl: process.env.REDIS_URL!,
@@ -26,14 +27,14 @@ describe.skipIf(!process.env.REDIS_URL)('BullMQ queue (real Redis)', () => {
     });
     open.push(queue);
     queue.start(importHandlers(workerRepo));
-    const app = createApp(repo, queue);
-    return { app, queue };
+    const app = createApp({ repo, queue, auth: new InMemoryAuthStore() });
+    return { api: await signIn(app), queue };
   }
 
-  async function waitFor(app: ReturnType<typeof createApp>, importId: string, until: (s: any) => boolean) {
+  async function waitFor(api: request.Agent, importId: string, until: (s: any) => boolean) {
     const deadline = Date.now() + 10_000;
     for (;;) {
-      const s = (await request(app).get(`/accounts/1/imports/${importId}`)).body;
+      const s = (await api.get(`/accounts/1/imports/${importId}`)).body;
       if (until(s)) return s;
       if (Date.now() > deadline) throw new Error(`timed out; last status: ${JSON.stringify(s)}`);
       await new Promise((r) => setTimeout(r, 25));
@@ -41,35 +42,35 @@ describe.skipIf(!process.env.REDIS_URL)('BullMQ queue (real Redis)', () => {
   }
 
   it('processes an upload end to end through Redis', async () => {
-    const { app } = setup(new InMemoryRepository());
-    const post = await request(app).post('/accounts/1/imports').attach('file', csv(L.salary, L.swiggy), 'a.csv');
+    const { api } = await setup(new InMemoryRepository());
+    const post = await api.post('/accounts/1/imports').attach('file', csv(L.salary, L.swiggy), 'a.csv');
     expect(post.status).toBe(202);
-    const s = await waitFor(app, post.body.importId, (x) => x.status === 'done');
+    const s = await waitFor(api, post.body.importId, (x) => x.status === 'done');
     expect(s).toMatchObject({ rowsInserted: 2, attempts: 1 });
   });
 
   it('retries transient failures with exponential backoff', async () => {
     const repo = new InMemoryRepository();
-    const { app } = setup(repo, flaky(repo, 2));
-    const post = await request(app).post('/accounts/1/imports').attach('file', csv(L.salary, L.swiggy), 'a.csv');
-    const s = await waitFor(app, post.body.importId, (x) => x.status === 'done' || x.status === 'failed');
+    const { api } = await setup(repo, flaky(repo, 2));
+    const post = await api.post('/accounts/1/imports').attach('file', csv(L.salary, L.swiggy), 'a.csv');
+    const s = await waitFor(api, post.body.importId, (x) => x.status === 'done' || x.status === 'failed');
     expect(s).toMatchObject({ status: 'done', attempts: 3 });
   });
 
   it('does not retry permanent failures, and records the reason', async () => {
-    const { app } = setup(new InMemoryRepository());
+    const { api } = await setup(new InMemoryRepository());
     const bad = Buffer.from(`${header}\n01/09/26,UPI-X-x@y-UTIB0000001-412345678901-p,1,01/09/26,nope,,100.00`);
-    const post = await request(app).post('/accounts/1/imports').attach('file', bad, 'bad.csv');
-    const s = await waitFor(app, post.body.importId, (x) => x.status === 'failed');
+    const post = await api.post('/accounts/1/imports').attach('file', bad, 'bad.csv');
+    const s = await waitFor(api, post.body.importId, (x) => x.status === 'failed');
     expect(s.attempts).toBe(1);
     expect(s.error).toMatch(/could not parse/);
   });
 
   it('dead-letters a job whose retries are exhausted', async () => {
     const repo = new InMemoryRepository();
-    const { app } = setup(repo, flaky(repo, 99));
-    const post = await request(app).post('/accounts/1/imports').attach('file', csv(L.salary), 'a.csv');
-    const s = await waitFor(app, post.body.importId, (x) => x.status === 'failed');
+    const { api } = await setup(repo, flaky(repo, 99));
+    const post = await api.post('/accounts/1/imports').attach('file', csv(L.salary), 'a.csv');
+    const s = await waitFor(api, post.body.importId, (x) => x.status === 'failed');
     expect(s).toMatchObject({ attempts: 3, error: 'db blip' });
   });
 });
