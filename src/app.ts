@@ -4,6 +4,7 @@ import multer from 'multer';
 import { authRoutes, currentUser, loadSession, sameOrigin, type AuthOptions } from './auth/http';
 import type { AuthStore } from './auth/store';
 import { categorize, DEFAULT_RULES } from './categorize/categorizer';
+import { CategoryBody, ImportListQuery, NarrationBody, parseOr400, TransactionsQuery } from './http/validate';
 import { submitImport } from './import/importService';
 import type { Repository } from './import/repository';
 import { parseNarration, toMerchantKey } from './normalize/narration';
@@ -98,8 +99,9 @@ export function createApp({ repo, queue, auth }: AppDeps, opts: AppOptions = {})
 
   // Import history, newest first.
   app.get('/accounts/:accountId/imports', wrap(async (req, res) => {
-    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
-    res.json(await repo.listImports(req.params.accountId!, limit));
+    const q = parseOr400(ImportListQuery, req.query, res);
+    if (!q) return;
+    res.json(await repo.listImports(req.params.accountId!, q.limit));
   }));
 
   // Progress of one import: queued -> processing -> done | failed.
@@ -112,9 +114,10 @@ export function createApp({ repo, queue, auth }: AppDeps, opts: AppOptions = {})
   }));
 
   app.get('/accounts/:accountId/transactions', wrap(async (req, res) => {
+    const q = parseOr400(TransactionsQuery, req.query, res);
+    if (!q) return;
     const all = await repo.listTransactions(req.params.accountId!);
-    const { category } = req.query;
-    const rows = typeof category === 'string' ? all.filter((t) => t.category.category === category) : all;
+    const rows = q.category === undefined ? all : all.filter((t) => t.category.category === q.category);
     res.json(
       rows
         .sort((a, b) => a.date.localeCompare(b.date))
@@ -137,27 +140,27 @@ export function createApp({ repo, queue, auth }: AppDeps, opts: AppOptions = {})
 
   // Teach the categorizer: "always label this merchant as X". Re-labels history too.
   app.put('/accounts/:accountId/merchants/:merchant/category', wrap(async (req, res) => {
-    const category = req.body?.category;
-    if (typeof category !== 'string' || !category.trim()) {
-      return res.status(400).json({ error: 'body.category is required' });
-    }
+    const body = parseOr400(CategoryBody, req.body, res);
+    if (!body) return;
+    const { category } = body;
     const key = toMerchantKey(req.params.merchant!);
     if (!key) return res.status(400).json({ error: 'invalid merchant' });
 
     const accountId = req.params.accountId!;
-    await repo.setOverride(accountId, key, category.trim());
+    await repo.setOverride(accountId, key, category);
     const relabelled = await repo.recategorize(
       accountId,
       key,
-      categorize({ channel: 'OTHER', merchantRaw: key, merchantKey: key, reference: null }, new Map([[key, category.trim()]])),
+      categorize({ channel: 'OTHER', merchantRaw: key, merchantKey: key, reference: null }, new Map([[key, category]])),
     );
-    res.json({ merchantKey: key, category: category.trim(), relabelled });
+    res.json({ merchantKey: key, category, relabelled });
   }));
 
   // Dev helper: see how a narration would be parsed.
   if (process.env.NODE_ENV !== 'production') {
     app.post('/debug/narration', (req, res) => {
-      res.json(parseNarration(String(req.body?.narration ?? '')));
+      const body = parseOr400(NarrationBody, req.body, res);
+      if (body) res.json(parseNarration(body.narration));
     });
   }
 

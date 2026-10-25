@@ -101,3 +101,31 @@ describe('serving the built frontend', () => {
     expect((await request(app).get('/nope').set('accept', 'application/json')).status).toBe(404);
   });
 });
+
+describe('input validation', () => {
+  it('reports every problem with its field path', async () => {
+    const h = await makeHarness(new InMemoryRepository(), { startWorker: false });
+    const res = await request(h.app).post('/auth/register').send({ email: 'nope', password: 'short' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('a valid email is required');
+    expect(res.body.issues.map((i: any) => i.path)).toEqual(['email', 'password']);
+  });
+
+  it('validates query parameters', async () => {
+    const h = await makeHarness(new InMemoryRepository(), { startWorker: false });
+    expect((await h.api.get('/accounts/1/imports?limit=abc')).status).toBe(400);
+    expect((await h.api.get('/accounts/1/imports?limit=500')).status).toBe(400);
+    expect((await h.api.get('/accounts/1/imports?limit=5')).status).toBe(200);
+    expect((await h.api.get('/accounts/1/transactions?category=Food')).status).toBe(200);
+  });
+
+  it('trims and bounds text fields', async () => {
+    const h = await makeHarness(new InMemoryRepository());
+    await h.uploadAndWait(Buffer.from(`${header}\n${L.swiggy}`));
+    const ok = await h.api.put('/accounts/1/merchants/SWIGGY/category').send({ category: '  Eating out  ' });
+    expect(ok.body.category).toBe('Eating out');
+    expect((await h.api.put('/accounts/1/merchants/SWIGGY/category').send({ category: 'x'.repeat(61) })).status).toBe(400);
+    expect((await h.api.put('/accounts/1/merchants/SWIGGY/category').send({ category: 42 })).status).toBe(400);
+    expect((await h.api.post('/accounts').send({ name: '   ' })).status).toBe(400);
+  });
+});

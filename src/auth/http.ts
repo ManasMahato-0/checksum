@@ -1,4 +1,5 @@
 import { Router, type Request, type RequestHandler, type Response } from 'express';
+import { Credentials, NewAccount, parseOr400 } from '../http/validate';
 import { DUMMY_HASH, hashPassword, hashToken, newSessionToken, verifyPassword } from './passwords';
 import type { AuthStore } from './store';
 import type { User } from './types';
@@ -41,16 +42,6 @@ class RateLimiter {
     }
     return ++h.count <= this.max;
   }
-}
-
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function readCredentials(body: unknown): { email: string; password: string } | string {
-  const { email, password } = (body ?? {}) as Record<string, unknown>;
-  if (typeof email !== 'string' || email.length > 254 || !EMAIL.test(email.trim())) return 'a valid email is required';
-  if (typeof password !== 'string' || password.length < 8) return 'password must be at least 8 characters';
-  if (password.length > 128) return 'password must be at most 128 characters';
-  return { email: email.trim().toLowerCase(), password };
 }
 
 /** Attaches res.locals.user when the request carries a valid session cookie. Never rejects. */
@@ -111,8 +102,8 @@ export function authRoutes(store: AuthStore, opts: AuthOptions = {}): Router {
   r.post('/auth/register', async (req, res, next) => {
     try {
       if (!registerLimit.hit(req.ip ?? '')) return res.status(429).json({ error: 'too many sign-ups, try again later' });
-      const creds = readCredentials(req.body);
-      if (typeof creds === 'string') return res.status(400).json({ error: creds });
+      const creds = parseOr400(Credentials, req.body, res);
+      if (!creds) return;
       const user = await store.createUser(creds.email, await hashPassword(creds.password));
       if (!user) return res.status(409).json({ error: 'an account with this email already exists' });
       await store.createAccount(user.id, 'Personal');
@@ -125,8 +116,8 @@ export function authRoutes(store: AuthStore, opts: AuthOptions = {}): Router {
 
   r.post('/auth/login', async (req, res, next) => {
     try {
-      const creds = readCredentials(req.body);
-      if (typeof creds === 'string') return res.status(400).json({ error: creds });
+      const creds = parseOr400(Credentials, req.body, res);
+      if (!creds) return;
       // Count every attempt, not just failures: a wrong-password loop can't reset its own window.
       if (!loginLimit.hit(req.ip ?? '')) return res.status(429).json({ error: 'too many attempts, try again later' });
       const found = await store.findUserByEmail(creds.email);
@@ -169,9 +160,9 @@ export function authRoutes(store: AuthStore, opts: AuthOptions = {}): Router {
 
   r.post('/accounts', requireUser, async (req, res, next) => {
     try {
-      const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
-      if (!name || name.length > 60) return res.status(400).json({ error: 'name is required (max 60 characters)' });
-      return res.status(201).json(await store.createAccount(currentUser(res)!.id, name));
+      const body = parseOr400(NewAccount, req.body, res);
+      if (!body) return;
+      return res.status(201).json(await store.createAccount(currentUser(res)!.id, body.name));
     } catch (e) {
       return next(e);
     }
