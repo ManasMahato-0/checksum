@@ -10,6 +10,7 @@ import { importHandlers } from './import/importService';
 import { PostgresRepository } from './import/postgresRepository';
 import { InMemoryRepository, type Repository } from './import/repository';
 import { BullMqQueue } from './queue/bullmqQueue';
+import { logger } from './logger';
 import { InProcessQueue, type JobQueue } from './queue/queue';
 
 const port = Number(process.env.PORT ?? 3000);
@@ -30,25 +31,25 @@ let queue: JobQueue;
 if (REDIS_URL) {
   // API only enqueues. Run `npm run worker` (one or many) to process jobs.
   queue = new BullMqQueue({ redisUrl: REDIS_URL });
-  console.log('queue: bullmq (start workers with `npm run worker`)');
+  logger.info('queue: bullmq (start workers with `npm run worker`)');
 } else {
   // No Redis: process jobs inside this process. Great for local dev.
   queue = new InProcessQueue();
   queue.start(importHandlers(repo));
-  console.log('queue: in-process (set REDIS_URL + DATABASE_URL for a real worker setup)');
+  logger.info('queue: in-process (set REDIS_URL + DATABASE_URL for a real worker setup)');
 }
-console.log(`storage: ${DATABASE_URL ? 'postgres' : 'in-memory'}`);
+logger.info(`storage: ${DATABASE_URL ? 'postgres' : 'in-memory'}`);
 
 // Same path from src/ (tsx) and dist/ (build): the frontend build lives at <root>/web/dist.
 const webDist = path.resolve(__dirname, '../web/dist');
 const staticDir = existsSync(path.join(webDist, 'index.html')) ? webDist : undefined;
-console.log(`frontend: ${staticDir ?? 'not built (run `npm run build` in web/, or use its dev server)'}`);
+logger.info(`frontend: ${staticDir ?? 'not built (npm run web:build, or use its dev server)'}`);
 
 async function main() {
   // Safe with several API/worker processes starting at once: migrations run under an advisory lock.
   if (db) {
     const ran = await migrate(db);
-    if (ran.length) console.log(`migrations applied: ${ran.join(', ')}`);
+    if (ran.length) logger.info({ migrations: ran }, 'migrations applied');
   }
 
   const server = createApp(
@@ -59,7 +60,7 @@ async function main() {
       secureCookies: process.env.COOKIE_SECURE === 'true',
       trustProxy: trustProxySetting(process.env.TRUST_PROXY),
     },
-  ).listen(port, () => console.log(`Checksum listening on :${port}`));
+  ).listen(port, () => logger.info({ port }, 'Checksum listening'));
 
   process.on('SIGTERM', async () => {
     server.close();
@@ -69,6 +70,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error('startup failed', e);
+  logger.fatal({ err: e }, 'startup failed');
   process.exit(1);
 });

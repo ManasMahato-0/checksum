@@ -129,3 +129,13 @@ describe('input validation', () => {
     expect((await h.api.post('/accounts').send({ name: '   ' })).status).toBe(400);
   });
 });
+
+describe('request ids', () => {
+  it('echoes a caller-supplied x-request-id and generates one otherwise', async () => {
+    const h = await makeHarness(new InMemoryRepository(), { startWorker: false });
+    expect((await request(h.app).get('/categories').set('x-request-id', 'abc-123')).headers['x-request-id']).toBe('abc-123');
+    expect((await request(h.app).get('/categories')).headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+    // junk is replaced, not reflected
+    expect((await request(h.app).get('/categories').set('x-request-id', '<script>')).headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});

@@ -3,6 +3,7 @@ import { pgDb } from './db/db';
 import { migrate } from './db/migrate';
 import { importHandlers, requeueStaleImports } from './import/importService';
 import { PostgresRepository } from './import/postgresRepository';
+import { logger } from './logger';
 import { BullMqQueue } from './queue/bullmqQueue';
 
 const { DATABASE_URL, REDIS_URL } = process.env;
@@ -16,20 +17,20 @@ const queue = new BullMqQueue({ redisUrl: REDIS_URL, concurrency: Number(process
 const STALE_MS = 5 * 60_000;
 const sweep = () =>
   requeueStaleImports(repo, queue, STALE_MS)
-    .then((n) => n && console.log(`sweeper re-enqueued ${n} stale import(s)`))
-    .catch((e) => console.error('sweeper failed', e));
+    .then((n) => n && logger.warn({ count: n }, 'sweeper re-enqueued stale imports'))
+    .catch((e) => logger.error({ err: e }, 'sweeper failed'));
 let timer: NodeJS.Timeout | undefined;
 
 // The schema must be current before the first job touches it (no-op when the API already migrated).
 migrate(db)
   .then(() => {
     queue.start(importHandlers(repo));
-    console.log('worker started');
+    logger.info({ concurrency: Number(process.env.WORKER_CONCURRENCY ?? 4) }, 'worker started');
     void sweep();
     timer = setInterval(sweep, 60_000);
   })
   .catch((e) => {
-    console.error('startup failed', e);
+    logger.fatal({ err: e }, 'startup failed');
     process.exit(1);
   });
 

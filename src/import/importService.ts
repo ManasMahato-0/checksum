@@ -1,5 +1,6 @@
 import { categorize } from '../categorize/categorizer';
 import { fingerprintAll, sha256 } from '../dedupe/fingerprint';
+import { logger } from '../logger';
 import { parseNarration } from '../normalize/narration';
 import { detectParser } from '../parsers/registry';
 import { PermanentError } from '../queue/errors';
@@ -33,13 +34,14 @@ export async function submitImport(
     await queue.enqueue({ importId: pending.importId, accountId });
   } catch (e) {
     // The upload is already durable in the database; the stale-job sweeper will re-enqueue it.
-    console.error(`enqueue failed for import ${pending.importId}; sweeper will retry`, e);
+    logger.warn({ err: e, importId: pending.importId }, 'enqueue failed; the sweeper will retry');
   }
   return { status: 'queued', importId: pending.importId };
 }
 
 /** Worker side: parse, dedupe, categorize, reconcile and persist one staged import. */
 export async function processImport(repo: Repository, importId: string): Promise<void> {
+  const started = performance.now();
   const claimed = await repo.claimImport(importId);
   if (!claimed) return; // already done/failed: a redelivered job is harmless
 
@@ -78,7 +80,22 @@ export async function processImport(repo: Repository, importId: string): Promise
   });
 
   const reconciliation = reconcile(parsed.transactions, parsed.openingBalancePaise);
-  await repo.completeImport({ importId, bank: parsed.bank, txns, reconciliation });
+  const saved = await repo.completeImport({ importId, bank: parsed.bank, txns, reconciliation });
+  if (saved) {
+    logger.info(
+      {
+        importId,
+        accountId,
+        bank: parsed.bank,
+        rows: txns.length,
+        inserted: saved.rowsInserted,
+        duplicates: saved.rowsDuplicate,
+        balanceBreaks: reconciliation.breaks.length,
+        ms: Math.round(performance.now() - started),
+      },
+      'import processed',
+    );
+  }
 }
 
 /** Wires a repository to a queue: what runs when a job is picked up, and when it dies. */

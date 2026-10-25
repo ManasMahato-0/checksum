@@ -1,12 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
 import multer from 'multer';
+import { pinoHttp } from 'pino-http';
 import { authRoutes, currentUser, loadSession, sameOrigin, type AuthOptions } from './auth/http';
 import type { AuthStore } from './auth/store';
 import { categorize, DEFAULT_RULES } from './categorize/categorizer';
 import { CategoryBody, ImportListQuery, NarrationBody, parseOr400, TransactionsQuery } from './http/validate';
 import { submitImport } from './import/importService';
 import type { Repository } from './import/repository';
+import { logger } from './logger';
 import { parseNarration, toMerchantKey } from './normalize/narration';
 import type { JobQueue } from './queue/queue';
 
@@ -18,7 +21,7 @@ const wrap =
   (req, res, next) =>
     fn(req, res, next).catch(next);
 
-const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({ error: `file exceeds ${MAX_FILE_BYTES / 1024 / 1024} MB limit` });
   }
@@ -26,7 +29,7 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (typeof err?.status === 'number' && err.status >= 400 && err.status < 500) {
     return res.status(err.status).json({ error: err.expose === false ? 'bad request' : err.message });
   }
-  console.error(err);
+  req.log.error({ err }, 'unhandled error');
   return res.status(500).json({ error: 'internal error' });
 };
 
@@ -46,6 +49,26 @@ export interface AppOptions extends AuthOptions {
 export function createApp({ repo, queue, auth }: AppDeps, opts: AppOptions = {}) {
   const app = express();
   if (opts.trustProxy !== undefined) app.set('trust proxy', opts.trustProxy);
+  // One line per request with a request id (taken from x-request-id or generated, and echoed
+  // back) so a user-reported failure can be found in the logs.
+  app.use(
+    pinoHttp({
+      logger,
+      genReqId: (req, res) => {
+        const incoming = req.headers['x-request-id'];
+        const id = typeof incoming === 'string' && /^[\w.-]{1,100}$/.test(incoming) ? incoming : randomUUID();
+        res.setHeader('x-request-id', id);
+        return id;
+      },
+      autoLogging: { ignore: (req) => req.url === '/health' || req.url?.startsWith('/assets/') === true },
+      customLogLevel: (_req, res, err) => (err || res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'),
+      customProps: (_req, res) => ({ userId: (res as express.Response).locals?.user?.id }),
+      serializers: {
+        req: (req) => ({ id: req.id, method: req.method, url: req.url }),
+        res: (res) => ({ statusCode: res.statusCode }),
+      },
+    }),
+  );
   app.use(express.json());
   app.use(sameOrigin);
   app.use(loadSession(auth));
@@ -92,7 +115,7 @@ export function createApp({ repo, queue, auth }: AppDeps, opts: AppOptions = {})
         .location(statusUrl)
         .json({ ...out, statusUrl });
     } catch (e) {
-      console.error(e);
+      req.log.error({ err: e }, 'upload failed');
       return res.status(500).json({ error: 'could not accept upload' });
     }
   });

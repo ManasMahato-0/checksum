@@ -1,5 +1,6 @@
 import { Queue, UnrecoverableError, Worker } from 'bullmq';
 import IORedis from 'ioredis';
+import { logger } from '../logger';
 import { PermanentError } from './errors';
 import { DEFAULT_RETRY, type ImportJob, type JobHandlers, type JobQueue, type RetryPolicy } from './queue';
 
@@ -68,11 +69,12 @@ export class BullMqQueue implements JobQueue {
       if (!job) return;
       const attempts = job.attemptsMade;
       const exhausted = attempts >= (job.opts.attempts ?? 1);
-      if (err instanceof UnrecoverableError || exhausted) {
-        handlers.onDead(job.data, err, attempts).catch((e) => console.error('onDead failed', e));
-      }
+      const dead = err instanceof UnrecoverableError || exhausted;
+      const msg = dead ? 'job dead-lettered' : 'job failed; will retry';
+      logger[dead ? 'error' : 'warn']({ importId: job.data.importId, attempts, err }, msg);
+      if (dead) handlers.onDead(job.data, err, attempts).catch((e) => logger.error({ err: e }, 'onDead failed'));
     });
-    this.worker.on('error', (err) => console.error('worker error', err));
+    this.worker.on('error', (err) => logger.error({ err }, 'worker error'));
   }
 
   async close() {

@@ -36,6 +36,11 @@ Design decisions worth knowing:
 - **Crash recovery**: the upload is durable in Postgres before it is enqueued; a sweeper in the
   worker re-enqueues anything stuck `queued`/`processing` for over 5 minutes.
 - **Raw rows are never mutated**; derived data lives in `transactions`.
+- **Structured logs** (pino): one JSON line per request with a request id (honours and echoes
+  `x-request-id`), the user id, status and duration; one line per processed import with row counts,
+  duplicates, balance breaks and timing. Cookies are redacted. `LOG_LEVEL` controls verbosity; a dev
+  terminal gets pretty output.
+- **Every input is validated** with zod schemas; a 400 names each bad field.
 - **Accounts belong to users.** Sign-in is email + password (scrypt, salted, parameters stored per
   hash). The session is an opaque random token in an `HttpOnly`, `SameSite=Lax` cookie; only its
   SHA-256 is stored, and logout deletes it server-side. Every `/accounts/:id/...` route checks
