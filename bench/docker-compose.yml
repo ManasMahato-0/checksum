@@ -1,0 +1,22 @@
+# Throwaway Postgres + Redis for `npm run bench`, on their own ports so dev data is never touched.
+#   docker compose -f bench/docker-compose.yml up -d
+#   docker compose -f bench/docker-compose.yml down -v
+name: checksum-bench
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ledger
+      POSTGRES_PASSWORD: ledger
+      POSTGRES_DB: checksum
+    ports: ["55432:5432"]
+    volumes:
+      - ../db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledger -d checksum"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7
+    ports: ["56379:6379"]

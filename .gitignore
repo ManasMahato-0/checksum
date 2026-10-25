@@ -4,3 +4,4 @@ dist
 # never commit real statements
 *.real.csv
 statements/private/
+coverage

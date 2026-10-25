@@ -10,7 +10,7 @@ import type {
   StoredTxn,
 } from './repository';
 
-const CHUNK_ROWS = 500; // 500 rows x ~15 params stays far below Postgres' 65535 parameter limit
+const DEFAULT_CHUNK_ROWS = 500; // 500 rows x ~15 params stays far below Postgres' 65535 parameter limit
 
 /** Multi-row INSERT in chunks. Returns the rows from RETURNING (if any) across all chunks. */
 async function insertChunked<T = Record<string, unknown>>(
@@ -18,11 +18,11 @@ async function insertChunked<T = Record<string, unknown>>(
   table: string,
   columns: string[],
   rows: unknown[][],
-  opts: { onConflict?: string; returning?: string } = {},
+  opts: { onConflict?: string; returning?: string; chunkRows: number },
 ): Promise<T[]> {
   const out: T[] = [];
-  for (let i = 0; i < rows.length; i += CHUNK_ROWS) {
-    const chunk = rows.slice(i, i + CHUNK_ROWS);
+  for (let i = 0; i < rows.length; i += opts.chunkRows) {
+    const chunk = rows.slice(i, i + opts.chunkRows);
     const params: unknown[] = [];
     const tuples = chunk.map((row) => {
       const ph = row.map((v) => {
@@ -110,8 +110,20 @@ const toImportBase = (r: ImportRow): Omit<ImportRecord, 'reconciliation'> => ({
   completedAt: r.completed_at === null ? null : String(r.completed_at),
 });
 
+export interface PostgresRepositoryOptions {
+  /** Rows per multi-row INSERT. 1 means one statement per row (used by the benchmark as a baseline). */
+  chunkRows?: number;
+}
+
 export class PostgresRepository implements Repository {
-  constructor(private readonly db: Db) {}
+  private readonly chunkRows: number;
+
+  constructor(
+    private readonly db: Db,
+    opts: PostgresRepositoryOptions = {},
+  ) {
+    this.chunkRows = opts.chunkRows ?? DEFAULT_CHUNK_ROWS;
+  }
 
   async createPendingImport(input: { accountId: string; fileHash: string; filename: string; content: Buffer }) {
     return this.db.transaction(async (tx) => {
@@ -212,6 +224,7 @@ export class PostgresRepository implements Repository {
         'raw_rows',
         ['import_id', 'row_number', 'raw'],
         input.txns.map((t) => [input.importId, t.raw.rowNumber, JSON.stringify(t.raw.raw)]),
+        { chunkRows: this.chunkRows },
       );
 
       // UNIQUE (account_id, fingerprint): rows already seen in an earlier statement are skipped.
@@ -228,7 +241,7 @@ export class PostgresRepository implements Repository {
           t.merchantKey, t.referenceNo, t.debitPaise, t.creditPaise, t.balancePaise,
           t.category.category, t.category.source, t.category.reason,
         ]),
-        { onConflict: 'ON CONFLICT (account_id, fingerprint) DO NOTHING', returning: 'fingerprint' },
+        { onConflict: 'ON CONFLICT (account_id, fingerprint) DO NOTHING', returning: 'fingerprint', chunkRows: this.chunkRows },
       );
 
       const recon = input.reconciliation;
@@ -237,6 +250,7 @@ export class PostgresRepository implements Repository {
         'reconciliation_breaks',
         ['import_id', 'row_number', 'expected_paise', 'actual_paise', 'diff_paise'],
         recon.breaks.map((b) => [input.importId, b.rowNumber, b.expectedPaise, b.actualPaise, b.diffPaise]),
+        { chunkRows: this.chunkRows },
       );
 
       const rowsInserted = inserted.length;

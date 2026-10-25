@@ -13,7 +13,9 @@
     "worker": "tsx src/worker.ts",
     "start:worker": "node dist/worker.js",
     "web:dev": "npm --prefix web run dev",
-    "web:build": "npm --prefix web run build"
+    "web:build": "npm --prefix web run build",
+    "bench": "tsx bench/run.ts",
+    "test:coverage": "vitest run --coverage"
   },
   "license": "MIT",
   "dependencies": {
@@ -31,6 +33,7 @@
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "^5.0.5",
     "supertest": "^7.3.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
